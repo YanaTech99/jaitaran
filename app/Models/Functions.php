@@ -255,28 +255,33 @@ class Functions extends Model {
         $Words = str_replace("_", " ", $Words);
         return ucwords(strtolower($Words));
     }
-    public static function uploadNewImage($file) {
+    public static function uploadNewImage($file)
+    {
         $settings = DB::table('settings')->select('*')->where("settingId", 1)->get()->toArray();
-        if (!is_dir('public/assets/uploads/'.session('dataBaseName'))) {
-            @mkdir('public/assets/uploads/'.session('dataBaseName'));
+
+        if (!is_dir('public/assets/uploads/' . session('dataBaseName'))) {
+            @mkdir('public/assets/uploads/' . session('dataBaseName'));
         }
-        $target_dir = 'public/assets/uploads/'.session('dataBaseName').'/';
+
+        $target_dir = 'public/assets/uploads/' . session('dataBaseName') . '/';
         $rand = mt_rand(111111111, 999999999);
-        $target_file = $target_dir . $rand . basename($file["name"]);
-        $uploadOk = 1;
-        $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+        $imageFileType = strtolower($file->getClientOriginalExtension());
         $target_file = $target_dir . $rand . "." . $imageFileType;
-        if ($file["size"] > $settings[0]->allowedImageSize) {
+
+        // Validate file size
+        if ($file->getSize() > $settings[0]->allowedImageSize) {
             $size = $settings[0]->allowedImageSize / 1000;
-            $message = "Sorry, Your File Is Too Large, Allowed File Size Is " . $size . " KB";
-            return array("status" => "error", "message" => $message);
-            $uploadOk = 0;
+            return ["status" => "error", "message" => "Sorry, Your File Is Too Large, Allowed File Size Is " . $size . " KB"];
         }
-        if ($uploadOk == 1) {
-            move_uploaded_file($file["tmp_name"], $target_file);
+
+        // Move file to the target directory
+        if ($file->move($target_dir, $rand . "." . $imageFileType)) {
+            return ["status" => "success", "message" => $target_file];
+        } else {
+            return ["status" => "error", "message" => "File upload failed"];
         }
-        return array("status" => "success", "message" => $target_file);
     }
+
     public function uploadExcel($file) {
         $settings = DB::table('settings')->select('*')->where("settingId", 1)->get()->toArray();
         if (!is_dir('public/backend/excels/'.session('dataBaseName'))) {

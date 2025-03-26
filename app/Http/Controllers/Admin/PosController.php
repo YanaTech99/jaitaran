@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Config;
 //use illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Validator;
 use Session;
 use Mail;
 use Exception;
@@ -207,7 +208,7 @@ class PosController extends Controller {
         $data['defaultPaymentMethod'] = Functions::getDataWhere("store_payments", "storeId", Session::get('storeId')) [0]['default'];
         $data['store'] = Functions::getDataWhere("stores", "storeId", Session::get('storeId')) [0];
         $data['seatingTables'] = Functions::getDataWhere("seating_tables", "storeId", Session::get('storeId'));
-    //$data['hotelRooms'] = Functions::getDataWhere("hotel_rooms", "storeId", Session::get('storeId'));
+        //$data['hotelRooms'] = Functions::getDataWhere("hotel_rooms", "storeId", Session::get('storeId'));
         $data['hotelRooms'] = Functions::getDataWhere("products", "storeId,productType", Session::get('storeId') . ",Hotel");
         $data['vendors'] = Functions::getDataWhere("vendors", "storeId", Session::get('storeId'));
         $data['employees'] = Functions::getDataWhere("employees", "storeId", Session::get('storeId'));
@@ -962,7 +963,6 @@ class PosController extends Controller {
         return $data;
     }
     public static function setCartPos($productId = false) {
-        
         if($productId == false){
             $productId = json_decode($_POST['productId']);
         }
@@ -1924,157 +1924,78 @@ class PosController extends Controller {
         //DB::select("DELETE FROM order_hotel_room WHERE orderId=0");
         
     }
-public function attachHotelRoomData(Request $request) {
-    try {
-       // / Session::forget("hotelRoom");
-        // Validation rules
-        $valid['productId'] = 'required';
-        $valid['dateCheckIn'] = 'required';
-        $valid['timeCheckIn'] = 'required';
-
-        $validator = validator($request->all(), $valid);
-
-        if ($validator->fails()) {
-            $html = "";
-            $errors = Functions::arrayConvert($validator->errors());
-            $i = 1;
-            foreach ($errors as $key => $value) {
-                foreach ($value as $key1 => $value1) {
-                    $html .= '<p>' . $i++ . ") " . $value1 . '</p>';
-                }
-            }
-            return json_encode(["status" => "false", "message" => $html]);
-        }
-
-        unset($_POST['_token']);
-
-        // Fetch hotel data using raw query
-        $productId = $_POST['productId'];
-        $hotel = DB::select("SELECT * FROM products WHERE productId = ?", [$productId]);
-
-        if (empty($hotel)) {
-            return json_encode(["status" => "false", "message" => "Hotel not found."]);
-        }
-
-        $data['post'] = $_POST;
-        $data['hotel'] = $hotel[0];
-//print_r(Session::get("hotelRoom"));
-//print_r($_POST);
-        // Determine hotelToken
-        if (Session::get("hotelRoom") == '' && Session::get("updateId") == '') {
-            $data['hotelToken'] = Functions::getToken(50);
-        } elseif (Session::get("hotelRoom") != '' && Session::get("updateId") == '') {
-            $data['hotelToken'] = Session::get("hotelRoom")['hotelToken'];
-        } else {
-            $data['hotelToken'] = Session::get("hotelRoom")['hotelToken'];
-        }
-
-        // Prepare data for insertion
-        $dataInsert = [
-            'productId' => $_POST['productId'],
-            'dateCheckIn' => $_POST['dateCheckIn'],
-            'dateCheckOut' => $_POST['dateCheckOut'],
-            'timeCheckIn' => $_POST['timeCheckIn'],
-            'timeCheckOut' => $_POST['timeCheckOut'],
-            'hotel' => json_encode($hotel[0]),
-            'hotelToken' => $data['hotelToken'],
-        ];
-
-        // Process uploaded images for persons
-        foreach ($_POST['personName'] as $key => $value) {
-            try {
-                if (!empty($_FILES['personId']['name'][$key])) {
-                    $img = [
-                        'name' => $_FILES['personId']['name'][$key],
-                        'type' => $_FILES['personId']['type'][$key],
-                        'tmp_name' => $_FILES['personId']['tmp_name'][$key],
-                        'error' => $_FILES['personId']['error'][$key],
-                        'size' => $_FILES['personId']['size'][$key]
-                    ];
-                    $image[$key] = Functions::uploadNewImage($img)['message'];
-                } else {
-                    $image[$key] = $_POST['personIdSaved'][$key] ?? '';
-                }
-            } catch (Exception $e) {
-                return json_encode(["status" => "false", "message" => "Error processing image for person: " . $e->getMessage()]);
-            }
-        }
-
-        $data['personId'] = $image;
-        $data['post']['personId'] = $image;
-
-        $dataInsert['customerData'] = json_encode([
-            "personName" => $_POST['personName'],
-            "personId" => $image
-        ]);
-
-        Session::put("hotelRoom", $data);
-
-        if (Session::get("updateId") != '' AND Session::get("updateId") > 0) {
-            $dataInsert['update_id'] = Session::get("updateId");
-            $dataInsert['where_column'] = 'orderId';
-        } elseif (Session::get("hotelRoom") != '' && (Session::get("updateId") == '' || Session::get("updateId") == 0)) {
-            $dataInsert['update_id'] = Session::get("hotelRoom")['hotelToken'];
-            $dataInsert['where_column'] = 'hotelToken';
-        }
-        //print_r(Session::get("updateId"));
-        //print_r(Session::get("hotelRoom"));
-        // Insert or update data using raw query
-        $updateId = $dataInsert['update_id'] ?? null;
-        $whereColumn = $dataInsert['where_column'] ?? null;
+    public function attachHotelRoomData(Request $request)
+    {
         try {
-            if (!empty($dataInsert['hotelToken'])) {
-    // Check if the hotelToken exists
-    $exists = DB::selectOne(
-        "SELECT COUNT(*) as count FROM order_hotel_room WHERE hotelToken = ?",
-        [$dataInsert['hotelToken']]
-    );
+            $validator = Validator::make($request->all(), [
+                'productId' => 'required',
+                'dateCheckIn' => 'required',
+                'timeCheckIn' => 'required',
+            ]);
 
-    if ($exists && $exists->count > 0) {
-        // Perform an update if the hotelToken exists
-        DB::update(
-            "UPDATE order_hotel_room SET productId = ?, dateCheckIn = ?, dateCheckOut = ?, timeCheckIn = ?, timeCheckOut = ?, hotel = ?, customerData = ? WHERE hotelToken = ?",
-            [
-                $dataInsert['productId'],
-                $dataInsert['dateCheckIn'],
-                $dataInsert['dateCheckOut'],
-                $dataInsert['timeCheckIn'],
-                $dataInsert['timeCheckOut'],
-                $dataInsert['hotel'],
-                $dataInsert['customerData'],
-                $dataInsert['hotelToken']
-            ]
-        );
-    } else {
-        // Perform an insert if the hotelToken does not exist
-        DB::insert(
-            "INSERT INTO order_hotel_room (productId, dateCheckIn, dateCheckOut, timeCheckIn, timeCheckOut, hotel, hotelToken, customerData) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                $dataInsert['productId'],
-                $dataInsert['dateCheckIn'],
-                $dataInsert['dateCheckOut'],
-                $dataInsert['timeCheckIn'],
-                $dataInsert['timeCheckOut'],
-                $dataInsert['hotel'],
-                $dataInsert['hotelToken'],
-                $dataInsert['customerData']
-            ]
-        );
-    }
-} else {
-    // Handle cases where hotelToken is missing
-    echo "hotelToken is required.";
-}
+            if ($validator->fails()) {
+                $errors = Functions::arrayConvert($validator->errors());
+                $html = collect($errors)->flatten()->map(function ($error, $index) {
+                    return ($index + 1) . ") " . $error;
+                })->implode('</p><p>');
+                return response()->json(["status" => "false", "message" => "<p>$html</p>"]);
+            }
 
+            $productId = $request->input('productId');
+            $hotel = DB::table('products')->where('productId', $productId)->first();
+
+            if (!$hotel) {
+                return response()->json(["status" => "false", "message" => "Hotel not found."]);
+            }
+
+            $hotelRoomSession = Session::get('hotelRoom');
+            $updateId = Session::get('updateId');
+            $hotelToken = $hotelRoomSession['hotelToken'] ?? Functions::getToken(50);
+
+            $dataInsert = [
+                'productId' => $request->input('productId'),
+                'dateCheckIn' => $request->input('dateCheckIn'),
+                'dateCheckOut' => $request->input('dateCheckOut'),
+                'timeCheckIn' => $request->input('timeCheckIn'),
+                'timeCheckOut' => $request->input('timeCheckOut'),
+                'hotel' => json_encode($hotel),
+                'hotelToken' => $hotelToken,
+            ];
+
+            $personImages = [];
+            foreach ($request->input('personName', []) as $key => $value) {
+                try {
+                    if ($request->hasFile("personId.$key")) {
+                        $imageFile = $request->file("personId.$key");
+                        $personImages[$key] = Functions::uploadNewImage($imageFile)['message'];
+                    } else {
+                        $personImages[$key] = $request->input("personIdSaved.$key", '');
+                    }
+                } catch (Exception $e) {
+                    return response()->json(["status" => "false", "message" => "Error processing image for person: " . $e->getMessage()]);
+                }
+            }
+
+            $dataInsert['customerData'] = json_encode([
+                "personName" => $request->input('personName'),
+                "personId" => $personImages
+            ]);
+
+            Session::put("hotelRoom", array_merge($request->all(), ['hotelToken' => $hotelToken, 'personId' => $personImages]));
+
+            $existingRecord = DB::table('order_hotel_room')->where('hotelToken', $hotelToken)->exists();
+
+            if ($existingRecord) {
+                DB::table('order_hotel_room')->where('hotelToken', $hotelToken)->update($dataInsert);
+            } else {
+                DB::table('order_hotel_room')->insert($dataInsert);
+            }
+
+            return response()->json(["status" => "success"]);
         } catch (Exception $e) {
-            return json_encode(["status" => "false", "message" => "Database operation failed: " . $e->getMessage()]);
+            return response()->json(["status" => "false", "message" => "An error occurred: " . $e->getMessage()]);
         }
-
-        return json_encode(["status" => "success"]);
-    } catch (Exception $e) {
-        return json_encode(["status" => "false", "message" => "An error occurred: " . $e->getMessage()]);
     }
-}
 
     public function getHotelStayInHours() {
         $date1 = date("Y-m-d H:i");

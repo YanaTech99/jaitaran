@@ -48,17 +48,24 @@
                   @if($enableSeatingTable == 1)
                   <h6 class="{{ (($enableOrderType == 0))?'rkwizhkscq':'ykaiwsoage'}}">{{$controller::message("Tables")}}</h6>
                   @foreach($seatingTables as $table)
-                  @php($BookedTable = $controller::getDataWhere("order","seatingTableId",$table['seatingTableId']))
+                  @php
+                     $BookedTable = DB::table('order')
+                        ->where('seatingTableId', $table['seatingTableId'])
+                        ->where('hold', 1)
+                        ->get()
+                        ->toArray();
 
-                  <div  class="anleefcqnn {{ (Session::get("seatingTableId")==$table['seatingTableId'])?' fspqembzib':'' }} 
-                        {{count($BookedTable)>0 && $BookedTable[0]['hold'] == 1 ?'bg-danger tutwtgfgdr':''}} "
+                     // Ensure there's at least one record before accessing $BookedTable[0]
+                     $hasBooking = !empty($BookedTable);
+                  @endphp
 
-                        order-id="{{count($BookedTable)>0?$BookedTable[0]['orderId']:''}}"
+                  <div class="anleefcqnn {{ (Session::get('seatingTableId') == $table['seatingTableId']) ? 'fspqembzib' : '' }} 
+                  {{ ($hasBooking && $BookedTable[0]->hold == 1) ? 'bg-danger tutwtgfgdr' : '' }}"
 
-                        data-id="{{$table['seatingTableId']}}">
-                     
-                     {{$table['heading']}} 
-                   
+                  order-id="{{ $hasBooking ? $BookedTable[0]->orderId : '' }}"
+                  data-id="{{ $table['seatingTableId'] }}">
+
+                     {{ $table['heading'] }}
                   </div>
                   @endforeach
                   @endif
